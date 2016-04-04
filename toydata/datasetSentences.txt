@@ -1,0 +1,10 @@
+sentence_index	sentence
+1	not very good
+2	better than the other horrible thing
+3	not as good as the great thing
+4	good but not great
+5	very horrible
+6	not horrible but not great
+7	very very great
+8	very good
+9	hello

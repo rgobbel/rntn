@@ -1,0 +1,9 @@
+not|very|good
+better|than|the|other|horrible|thing
+not|as|good|as|the|great|thing
+good|but|not|great
+very|horrible
+not|horrible|but|not|great
+very|very|great
+very|good
+hello

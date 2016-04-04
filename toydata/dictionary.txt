@@ -1,0 +1,35 @@
+not|0
+very|1
+good|2
+very good|3
+not very good|4
+better|5
+than|6
+the|7
+other|8
+horrible|9
+thing|10
+horrible thing|11
+other horrible thing|12
+better than|13
+the other horrible thing|14
+better than the other horrible thing|15
+but|16
+great|17
+great thing|18
+the great thing|19
+as the great thing|20
+as|21
+as good|22
+as good as the great thing|23
+not as good as the great thing|24
+not great|25
+but not great|26
+good but not great|27
+very horrible|28
+good but not great|29
+not horrible|30
+not horrible but not great|31
+very great|32
+very very great|33
+hello|34
