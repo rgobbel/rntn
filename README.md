@@ -1,12 +1,13 @@
 This is an implementation of a recursive neural tensor net (RNTN), as described in:
+========================================================
 
 Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher Manning, Andrew Ng and Christopher Potts
 Conference on Empirical Methods in Natural Language Processing (EMNLP 2013)
 
 Included:
-
+--------
 -rntn.py, the main program
--rntn_dictionary.py, dictionary class for phrases
+-rntn\_dictionary.py, dictionary class for phrases
 -phrase_tree.py, classes for sentences, phrases, and individual tokens
 
 -binary_tree.py, not actually part of the program, but contains a postorder traversal method for binary trees
@@ -19,7 +20,7 @@ toydata, a very small dataset (9 hand-made sentences), for debugging or demo pur
 checkpoints, for storing parameter checkpoint files
 
 To run the program (note: Python 3 only!):
-
+------------------------------------
 For a long list of options:
 python3 rntn.py --help
 (Note: the docopt options processor is unforgiving, and unfortunately not very informative
