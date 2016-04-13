@@ -20,17 +20,17 @@ To run the program:
 ------------------------------------
 ###For a long list of options:
 
-    python3 rntn.py --help
+    python rntn.py --help
 (Note: the docopt options processor is unforgiving, and unfortunately not very informative
 if the options are not a perfect match for what it expects. My apologies, I didn't find out until I was committed to using it.
 
 ###Training (first time):
 
-    python3 rntn.py train --data-from=toydata --learning-rate=0.001 --wvlr=0.001 --lambda=1.0 --report-interval=100 --validate-interval=100 --checkpoint-interval=100 --checkpoint-base=rntn_test --checkpoint-dir=checkpoints --log-name=rntn-test.log --word-vector-size=10 --cost-threshold=1.0 --check-training=True --batch-size=3
+    python rntn.py train --data-from=toydata --learning-rate=0.001 --wvlr=0.001 --lambda=1.0 --report-interval=100 --validate-interval=100 --checkpoint-interval=100 --checkpoint-base=rntn_test --checkpoint-dir=checkpoints --log-name=rntn-test.log --word-vector-size=10 --cost-threshold=1.0 --check-training=True --batch-size=3
 
 ###Training (continuing with saved parameters):
 
-    python3 rntn.py train --data-from=toydata --learning-rate=0.001 --wvlr=0.001 --lambda=1.0 --report-interval=100 --validate-interval=100 --checkpoint-interval=100 --checkpoint-base=rntn_test --checkpoint-dir=checkpoints --log-name=rntn-test.log --word-vector-size=10 --cost-threshold=1.0 --check-training=True --batch-size=3 --params-from=checkpoints/rntn_test_20160331_145700_700.pickle
+    python rntn.py train --data-from=toydata --learning-rate=0.001 --wvlr=0.001 --lambda=1.0 --report-interval=100 --validate-interval=100 --checkpoint-interval=100 --checkpoint-base=rntn_test --checkpoint-dir=checkpoints --log-name=rntn-test.log --word-vector-size=10 --cost-threshold=1.0 --check-training=True --batch-size=3 --params-from=checkpoints/rntn_test_20160331_145700_700.pickle
 
 
 
@@ -54,7 +54,7 @@ if the options are not a perfect match for what it expects. My apologies, I didn
 
 ###To check prediction accuracy:
 
-    python3 rntn.py accuracy validation --params-from=checkpoints/rntn_test_20160331_145718_800.pickle
+    python rntn.py accuracy validation --params-from=checkpoints/rntn_test_20160331_145718_800.pickle
 
 
 
