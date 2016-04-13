@@ -85,6 +85,9 @@ class Dictionary:
         else:
             return self[self.iter_index-1]
 
+    def next(self):
+        return self.__next__()
+
     def dump(self, dict_file, sentiment_file):
         with open(dict_file, 'w') as f_dict:
             with open(sentiment_file, 'w') as f_sent:
@@ -102,7 +105,10 @@ class Dictionary:
                 csv.register_dialect('barsep', delimiter='|', quoting=csv.QUOTE_NONE)
             fieldnames = ['phrase ids', 'sentiment values']
             reader = csv.DictReader(f_sentiment, dialect='barsep', fieldnames=fieldnames)
-            _ = reader.next()
+            if PY3:
+                _ = reader.__next__()
+            else:
+                _ = reader.next()
             sentiment_map = {row['phrase ids']: float(row['sentiment values']) for row in reader}
         with open(dict_filename, 'r') as f_dict:
             for line in f_dict.readlines():
