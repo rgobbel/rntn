@@ -16,7 +16,7 @@ Included:
 
 - checkpoints, a directory for storing parameter checkpoint files
 
-To run the program (note: Python 3 only!):
+To run the program:
 ------------------------------------
 ###For a long list of options:
 
