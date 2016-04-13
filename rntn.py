@@ -37,6 +37,7 @@ Options:
   --print-tests=<boolean>     Print accuracy test result. [default: True]
 """
 
+from __future__ import print_function
 from rntn_data import *
 import numpy as np
 import pickle
@@ -47,6 +48,8 @@ import datetime as dt
 import logging as lg
 import random
 import collections
+
+FTYPE = np.float64
 
 default_log_name = 'rntn.log'
 default_config_name = 'rntn.ini'
@@ -59,7 +62,7 @@ default_batch_size = 1
 default_epsilon = 1e-7
 default_seed = 1
 default_cost_threshold = None
-default_word_vec_size = 3 # make this number small for easier debugging
+default_word_vec_size = 10 # make this number small for easier debugging
 n_labels = 5
 #default_data_dir = 'sstdata'
 default_data_dir = 'toydata'
@@ -71,19 +74,20 @@ default_valid_limit = None
 g_disable_tensor = False
 
 
-v1 = np.ones([1, 1], np.float16)
+v1 = np.ones([1, 1], FTYPE)
 
 
 def report(msg):
-    lg.getLogger('rntn').info(msg)
+    print(msg)
+    #lg.getLogger('rntn').info(msg)
 
 
 def weight_variable(shape):
-    return np.random.rand(*shape).astype(np.float32) * 2 * u_range - u_range
+    return np.random.rand(*shape).astype(FTYPE) * 2 * u_range - u_range
 
 
 def bias_variable(shape):
-    return np.random.rand(*shape).astype(np.float32) * 2 * u_range - u_range
+    return np.random.rand(*shape).astype(FTYPE) * 2 * u_range - u_range
     #return np.zeros(shape, np.float32)
 
 
@@ -92,7 +96,7 @@ def attach_info_to_nodes(sents, ddict, wvecs):
         for node in s:
             node_entry = ddict[node.phrase]
             node.phrase_id = node_entry.phrase_id
-            node.sentiment = np.array(np.mat(node_entry.sentiment_1hot), np.float32).T
+            node.sentiment = np.array(np.mat(node_entry.sentiment_1hot), FTYPE).T
             node.word_vec = wvecs[node.phrase_id,:,:]
 
 
@@ -148,7 +152,7 @@ def reset_params():
 
 def unroll_params(params):
     total_size = sum(a.size for a in params)
-    unrolled = np.zeros(total_size, np.float32)
+    unrolled = np.zeros(total_size, FTYPE)
     shapes = []
     i = 0
     for param in params:
@@ -169,16 +173,31 @@ def reroll_params(unrolled, shapes):
     return rerolled
 
 
-def check_gradients(data, params, epsilon=default_epsilon, lamda=default_lambda):
-    unrolled, shapes = unroll_params(params)
+def check_gradients(data, params, epsilon=default_epsilon, lamda=default_lambda,
+                    u=u_range, sin_init=False):
+    unrolled, shapes = np.copy(unroll_params(params))
+    max_diff = 0.0
+    max_i = 0
+    if sin_init:
+        for i in range(len(unrolled)):
+            unrolled[i] = np.sin(i+1) * u
+        params = reroll_params(unrolled, shapes)
     numgrad = np.zeros(len(unrolled), np.float32)
+    diffs = np.zeros_like(unrolled)
     # if g_disable_tensor:
     #     params[0] = np.zeros_like(params[0])
     names = ['V', 'W', 'Ws', 'W_bias', 'Ws_bias', 'L']
     dwords = wvdict(params[1].shape[0])
     grad_words = wvdict(params[1].shape[0])
     num_grad_words = wvdict(params[1].shape[0])
-    (acost, agrads, aerr) = fwd_back_batch(params[:-1], params[-1], dwords, grad_words, data, lamda)
+    np.random.seed(default_seed)
+    for s in sentences:
+        for n in s.nodes:
+            fake_sentiment = np.zeros([n_labels, 1])
+            fake_sentiment[random.randrange(n_labels)] = 1.0
+            n.sentiment = fake_sentiment
+    (acost, agrads) = fwd_back_batch(params[:-1], params[-1], dwords, grad_words, data, lamda)
+    unagrads, _ = unroll_params(agrads)
     gwords = np.concatenate([grad_words[gw] for gw in grad_words], axis=1)
     agrads.append(gwords)
     for i in range(len(unrolled)):
@@ -187,15 +206,22 @@ def check_gradients(data, params, epsilon=default_epsilon, lamda=default_lambda)
         unrolled[i] = p0 + epsilon
         rparams = reroll_params(unrolled, shapes)
         dwords.clear()
-        (pcost, _, _) = fwd_back_batch(rparams[:-1], rparams[-1], dwords,
+        np.random.seed(default_seed)
+        (pcost, _) = fwd_back_batch(rparams[:-1], rparams[-1], dwords,
                                          num_grad_words, data, lamda)
         unrolled[i]  = p0 - epsilon
         rparams = reroll_params(unrolled, shapes)
         dwords.clear()
-        (mcost, _, _) = fwd_back_batch(rparams[:-1], rparams[-1], dwords,
+        np.random.seed(default_seed)
+        (mcost, _) = fwd_back_batch(rparams[:-1], rparams[-1], dwords,
                                          num_grad_words, data, lamda)
         unrolled[i] = p0
         numgrad[i] = (pcost - mcost) / (2 * epsilon)
+        if i < len(unagrads):
+            diffs[i] = numgrad[i] - unagrads[i]
+            if np.abs(diffs[i]) > max_diff:
+                 max_diff = numgrad[i]
+                 max_i = i
     gwords = np.concatenate([grad_words[gw] for gw in grad_words], axis=1)
     numgrads = reroll_params(numgrad, shapes)[:-1]
     numgrads.append(gwords)
@@ -209,8 +235,11 @@ def check_gradients(data, params, epsilon=default_epsilon, lamda=default_lambda)
         print('{0:>8}:{1:>{width}.{prec}f}{2:>{width}.{prec}f}{3:>{width}.{prec}f}{4:>{width}.{'
            'prec}f}'.
               format(
-                s, gn, ga, gn - ga, ((np.abs(gn) + 1e-9)/(np.abs(ga) + 1e-9)),
+                s, gn, ga, gn - ga, gn/ga,
                 width=25, prec=20))
+    print('Largest difference was {:.{prec}f}, at index {}'.
+          format(max_diff, max_i, prec=15))
+    return reroll_params(diffs, shapes)[:-1]
     #return list(zip(numgrads, agrads))
 
 
@@ -233,11 +262,12 @@ def predict_cost(prediction, target):
 
 
 def forward_prop(a, b, V, W, Wb):
+    W_biased = np.concatenate([W, Wb], axis=1)
     ab = np.concatenate((a, b), axis=0)
+    ab1 = np.concatenate([a, b, v1], axis=0)
     h = np.dot(np.dot(ab.T, V), ab)[0]
-    std_forward = np.dot(np.concatenate((W, Wb), axis=1),
-                         np.concatenate((ab, v1), axis=0))
-    return np.tanh(h + std_forward)
+    std_forward = np.dot(W_biased, ab1)
+    return h + std_forward
 
 
 def forward_predict(Ws, Wsb, a):
@@ -248,25 +278,25 @@ def forward_predict(Ws, Wsb, a):
 def forward_prop_sentence(s, V, W, Ws, Wb, Wsb, L):
     predictions = []
     targets = []
-    costs = []
     outputs = []
+    word_vecs = []
     # Note: In the corpus that we've seen, parse trees are always ordered such that
     # iteration forward through the list will be in bottom-up order.
     # Conversely, iteration in reverse is always top-down.
     # This is extremely convenient. If this were not the case, a topological sort would fix it.
     for node in s:
         if node.is_leaf:
-            activation = np.tanh(L[node.phrase_id])
+            activation = L[node.phrase_id]
+            word_vecs.append(activation)
         else:
             activation = forward_prop(outputs[node.left.idx], outputs[node.right.idx], V, W, Wb)
+        output = np.tanh(activation)
         target = node.sentiment
-        prediction = forward_predict(Ws, Wsb, activation)
-        cost = predict_cost(prediction, target)
+        prediction = forward_predict(Ws, Wsb, output)
         predictions.append(prediction)
         targets.append(target)
-        costs.append(cost)
-        outputs.append(activation)
-    return predictions, targets, costs, outputs
+        outputs.append(output)
+    return predictions, targets, outputs, word_vecs
 
 
 def get_words(ss):
@@ -321,18 +351,17 @@ def pos_neg_accuracy(ss, params):
     return n_correct/len(ss)
 
 
-def regularization_all(lamda, m, params, L, s):
-    err_params = (np.sum(np.sum(np.square(theta))for theta in params))
-    err_L = np.sum(np.sum(np.square(L[i]) for i in (node.phrase_id for node in s if
-                                                    node.is_leaf)))
-    return lamda/(2*m) * (err_params + err_L)
+def regularization_all(lamda, m, params, word_vecs):
+    th_sq_norm = np.sum(np.square(np.linalg.norm(theta)) for theta in params)
+    L_sq_norm = np.sum(np.sum(np.square(np.linalg.norm(word_vecs))))
+    return (lamda/(2*m)) * (th_sq_norm + L_sq_norm)
 
 
-def total_error(targets, predictions, lamda, m, params, L, s):
-    err_components = np.sum(sum(t * -np.log(y)
-                                for (t, y) in zip(targets, predictions)))
-    reg = regularization_all(lamda, m, params, L, s)
-    return err_components + reg
+def aggregate_cost(targets, predictions, lamda, m, params, word_vecs):
+    err_components = np.sum(predict_cost(y, t)
+                                for (t, y) in zip(targets, predictions))[0]
+    reg = regularization_all(lamda, m, params, word_vecs)
+    return err_components/m + reg
 
 
 def regularization(lamda, m, theta):
@@ -346,48 +375,46 @@ def E_theta(targets, predictions, lamda, m, theta):
 
 
 def delta_sm_i(prediction, target, Ws, node_out):
-    raw_diff = prediction - target
-    err_predict = np.dot(Ws.T, raw_diff)
+    err_predict = np.dot(Ws.T, prediction - target)
     f_prime_node = 1 - node_out ** 2
     delta_sm = err_predict * f_prime_node
-    delta_ws = np.dot(raw_diff, node_out.T)
-    return delta_sm, delta_ws
+    return delta_sm
 
 
 def delta_down_i(W, delta_com, V, inputs):
+    grad_inputs = 1.0 - inputs**2
+    delta_down_w = np.dot(W.T, delta_com)
     VVT = V + np.transpose(V, (0, 2, 1))
     pr1 = (delta_com.T * np.dot(VVT, inputs).T).T
     S = np.sum(pr1, axis=0)
-    delta_down_w = np.dot(W.T, delta_com)
-    grad_inputs = 1.0 - inputs**2
     return (delta_down_w + S) * grad_inputs
 
 
 def wvdict(word_vector_size):
     return collections.defaultdict(
-            lambda: np.zeros([word_vector_size, 1], dtype=np.float32))
+            lambda: np.zeros([word_vector_size, 1], dtype=FTYPE))
 
 
 def backprop_sentence(s, dwords, V, W, Ws, Wb, Wsb,
-                      predictions, targets, costs, outputs):
-    s_top_down = reversed(list(zip(s.nodes, predictions, targets, costs, outputs)))
-    delta_down = [np.zeros_like(W, np.float32)] * len(s)
-    delta_v = np.zeros_like(V, np.float32)
-    delta_w = np.zeros_like(W, np.float32)
-    delta_ws = np.zeros_like(Ws, np.float32)
-    delta_wb = np.zeros_like(Wb, np.float32)
-    delta_wsb = np.zeros_like(Wsb, np.float32)
+                      predictions, targets, outputs):
+    s_top_down = reversed(list(zip(
+            s.nodes, predictions, targets, outputs)))
+    delta_down = [np.zeros([word_vec_size, 1], FTYPE)] * len(s)
+    delta_v = np.zeros_like(V, FTYPE)
+    delta_w = np.zeros_like(W, FTYPE)
+    delta_ws = np.zeros_like(Ws, FTYPE)
+    delta_wb = np.zeros_like(Wb, FTYPE)
+    delta_wsb = np.zeros_like(Wsb, FTYPE)
     # reverse index goes top-down
-    for (node, prediction, target, cost, output) in s_top_down:
-        delta_predict, dws_i = \
-            delta_sm_i(prediction, target, Ws, output)
-        delta_ws += dws_i
-        delta_wsb += prediction - target
+    for (node, prediction, target, output) in s_top_down:
+        delta_sm = delta_sm_i(prediction, target, Ws, output)
+        delta_ws += np.dot(prediction - target, output.T)
+        delta_wsb += (prediction - target)
 
         if node.is_root:
-            delta_complete = delta_predict
+            delta_complete = delta_sm
         else:
-            delta_complete = delta_predict + delta_down[node.idx]
+            delta_complete = delta_sm + delta_down[node.idx]
 
         if node.is_leaf:
             dwords[node.phrase_id] += delta_complete
@@ -395,14 +422,10 @@ def backprop_sentence(s, dwords, V, W, Ws, Wb, Wsb,
             inp = np.concatenate((outputs[node.left.idx],
                                   outputs[node.right.idx]), axis = 0)
             dd = delta_down_i(W, delta_complete, V, inp)
-            delta_down[node.left.idx] = dd[0:word_vec_size]
+            delta_down[node.left.idx] = dd[:word_vec_size]
             delta_down[node.right.idx] = dd[word_vec_size:]
-            if node.is_root:
-                delta_w += np.dot(delta_complete, inp.T)
-                delta_wb += delta_complete
-            else:
-                delta_w += np.dot(delta_complete, inp.T)
-                delta_wb += delta_complete
+            delta_w += np.dot(delta_complete, inp.T)
+            delta_wb += delta_complete
             input_inputT = np.dot(inp, inp.T)
             delta_v += np.squeeze(np.tensordot(delta_complete, input_inputT, axes=0), 1)
     deltas = [delta_v, delta_w, delta_ws, delta_wb, delta_wsb]
@@ -411,27 +434,29 @@ def backprop_sentence(s, dwords, V, W, Ws, Wb, Wsb,
 
 def fwd_back_batch(params, L, dwords, grad_words, examples, lamda):
     (V, W, Ws, Wb, Wsb) = params
-    m = len(examples)
-    d_batch = [np.zeros_like(theta, np.float32) for theta in params]
-    total_cost = 0.0
-    total_pred_err = 0.0
+    m = sum(len(s) for s in examples)
+    d_batch = [np.zeros_like(theta, FTYPE) for theta in params]
     batch_scale = 1.0/m
     reg_scale = lamda/m
     dwords.clear()
+    predictions = []
+    targets = []
+    word_vecs = []
     for s in examples:
-        preds, targets, pred_err, outs = forward_prop_sentence(s, V, W, Ws, Wb, Wsb, L)
-        deltas = backprop_sentence(s, dwords, V, W, Ws, Wb, Wsb,
-                                   preds, targets, pred_err, outs)
+        s_preds, s_targets, outs, s_words = forward_prop_sentence(s, V, W, Ws, Wb, Wsb, L)
+        predictions += s_preds
+        word_vecs += s_words
+        targets += s_targets
+        deltas = backprop_sentence(s, dwords, V, W, Ws, Wb, Wsb, s_preds, s_targets, outs)
         for j in range(len(deltas)):
             d_batch[j] += deltas[j]
-        total_pred_err += sum(pred_err)
-        total_cost += total_error(targets, preds, lamda, m, params, L, s)
+    word_vecs = np.array([dwords[key] for key in dwords])
+    total_cost = aggregate_cost(targets, predictions, lamda, m, params, np.array(word_vecs))
     for key in dwords:
         grad_words[key] += dwords[key] * batch_scale + L[key] * reg_scale
     grads = [d_theta * batch_scale  + theta * reg_scale
-             for (d_theta, theta) in zip(params, d_batch)]
-    avg_cost = total_cost / m
-    return avg_cost, grads, total_pred_err
+              for (d_theta, theta) in zip(params, d_batch)]
+    return total_cost, grads
 
 
 def train(params, trains, valids=None, gl_hist=None, am_params=None, max_epochs=100,
@@ -448,7 +473,7 @@ def train(params, trains, valids=None, gl_hist=None, am_params=None, max_epochs=
     if max_epochs is None: max_epochs = default_max_epochs
     (V, W, Ws, Wb, Wsb, L) = params
     # if g_disable_tensor:
-    #     V = np.zeros_like(V, np.float32)
+    #     V = np.zeros_like(V, FTYPE)
     tparams = params[:-1]
     gr_epsilon = 1e-6
     msg1 = 'Batch size={}, max epochs={}'.format(batch_size, max_epochs)
@@ -467,26 +492,26 @@ def train(params, trains, valids=None, gl_hist=None, am_params=None, max_epochs=
     m = batch_size
     if am_params is None: # Adamax parameters
         # zero init of first moment
-        opt_m = [np.zeros_like(p, np.float32) for p in tparams]
+        opt_m = [np.zeros_like(p, FTYPE) for p in tparams]
         # zero init of exponentially weighted infinity norm
-        opt_u = [np.zeros_like(p, np.float32) for p in tparams]
+        opt_u = [np.zeros_like(p, FTYPE) for p in tparams]
         #beta1 = 0.9
         #beta2 = 0.999
         am_params = (opt_m, opt_u)
     else:
         (opt_m, opt_u) = am_params
     if gl_hist is None:
-        gl_hist = np.ones_like(L, np.float32) * gr_epsilon
+        gl_hist = np.ones_like(L, FTYPE) * gr_epsilon
     last_epoch = 0
     dwords = wvdict(W.shape[0])
     grad_words = wvdict(W.shape[0])
     for i in range(max_epochs):
         # if g_disable_tensor:
-        #     V = np.zeros_like(V, np.float32)
+        #     V = np.zeros_like(V, FTYPE)
         last_epoch = i
         grad_words.clear()
         batch = [trains[i] for i in random.sample(range(len(trains)), m)]
-        cost, grads, pred_err = fwd_back_batch(
+        cost, grads = fwd_back_batch(
                 tparams, L, dwords, grad_words, batch, lamda)
         if use_adamax:
             opt_m, opt_u, tparams = adamax(grads, tparams, opt_m, opt_u, i+1, lr)
@@ -548,7 +573,7 @@ def adamax(grads, params, ms, us, i, lr=0.0002, b1=0.9, b2=0.999, epsilon=1e-8):
     lr_t = lr / (1 - np.power(b1, i))
     for g, p, m, u in zip(grads, params, ms, us):
         m = (b1 * m) + (1 - b1) * g
-        u = np.fmax(np.ones_like(g, np.float32) * b2 * u, np.absolute(g))
+        u = np.fmax(np.ones_like(g, FTYPE) * b2 * u, np.absolute(g))
         p -= lr_t * m/(u+epsilon)
     return ms, us, params
 

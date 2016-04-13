@@ -1,4 +1,9 @@
+from __future__ import absolute_import
 import csv
+import io
+import sys
+
+PY3 = sys.version_info > (3,)
 
 
 class DictItem:
@@ -36,6 +41,13 @@ class DictItem:
     def sentiment_1hot(self):
         return [1.0 if self.sentiment_class == i else 0.0 for i in range(5)]
 
+
+class barsep(csv.Dialect):
+    """Bar-separated files."""
+    delimiter = '|'
+    quoting = csv.QUOTE_NONE
+    lineterminator = '\r\n'
+csv.register_dialect('barsep', barsep)
 
 class Dictionary:
 
@@ -86,10 +98,11 @@ class Dictionary:
     def load(cls, dict_filename, sentiment_filename):
         result = cls()
         with open(sentiment_filename, 'r') as f_sentiment:
-            csv.register_dialect('barsep', delimiter='|', quoting=csv.QUOTE_NONE)
+            if PY3:
+                csv.register_dialect('barsep', delimiter='|', quoting=csv.QUOTE_NONE)
             fieldnames = ['phrase ids', 'sentiment values']
             reader = csv.DictReader(f_sentiment, dialect='barsep', fieldnames=fieldnames)
-            _ = reader.__next__()
+            _ = reader.next()
             sentiment_map = {row['phrase ids']: float(row['sentiment values']) for row in reader}
         with open(dict_filename, 'r') as f_dict:
             for line in f_dict.readlines():

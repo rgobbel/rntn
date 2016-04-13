@@ -4,6 +4,9 @@ from phrase_tree import *
 from rntn_dictionary import *
 import csv
 import configparser
+import io
+
+PY3 = sys.version_info > (3,)
 
 
 def main(args):

@@ -139,24 +139,25 @@ class SentenceTree:
 
     def __init__(self, idx, tokens, ppointers, sentence):
         self._idx = idx
+        self._iter_index = 0
         self._sentence = sentence
         self._nodes = [PhraseNode(i, ppointers[i]-1) for i in range(len(ppointers))]
         for i in range(len(ppointers)):
-            node = self.nodes[i]
+            node = self._nodes[i]
             if i < len(tokens):
-                node.token = tokens[i]
+                node._token = tokens[i]
             pp = ppointers[i]
             if pp != 0:
-                node.parent = self.nodes[pp-1]
-                if node.parent.left is None:
-                    node.parent.left = node
+                node._parent = self._nodes[pp-1]
+                if node._parent.left is None:
+                    node._parent.left = node
                 else:
-                    node.parent.right = node
+                    node._parent.right = node
             else:
                 self._root = node
 
     def __repr__(self):
-        return '{}:{}'.format(self.idx, self.root.phrase)
+        return '{}:{}'.format(self._idx, self._root.phrase)
 
     @property
     def root(self):
@@ -172,7 +173,7 @@ class SentenceTree:
 
     @property
     def leaves(self):
-        return [node for node in self.nodes if node.is_leaf]
+        return [_node for _node in self._nodes if _node.is_leaf]
 
     @property
     def sentence(self):
@@ -183,24 +184,28 @@ class SentenceTree:
         return self._root.n_chunks
 
     def fix_pointers(self):
-        self.root.fix_pointers()
+        self._root.fix_pointers()
 
     def __getitem__(self, idx):
-        return self.nodes[idx]
+        return self._nodes[idx]
 
     def __len__(self):
-        return len(self.nodes)
+        return len(self._nodes)
 
     def __iter__(self):
-        self.iter_index = 0
+        self._iter_index = 0
         return self
 
     def __next__(self):
-        self.iter_index += 1
-        if self.iter_index > len(self):
+        self._iter_index += 1
+        if self._iter_index > self.__len__():
             raise StopIteration
         else:
-            return self[self.iter_index-1]
+            return self[self._iter_index - 1]
+
+    #@property # breaks in Python 2
+    def next(self):
+        return self.__next__()
 
     @classmethod
     def load_trees(cls, tree_data, sentences):
@@ -212,34 +217,39 @@ class SentenceTree:
 class SentenceSet:
 
     def __init__(self, trees=None):
-        self.idx_dict = {}
+        self._iter_index = 0
+        self._idx_dict = {}
         if trees:
             for tree in trees:
                 self.add(tree)
 
     def add(self, tree):
-        self.idx_dict[tree.idx] = tree
+        self._idx_dict[tree.idx] = tree
 
     def __getitem__(self, idx):
-        return self.idx_dict[idx]
+        return self._idx_dict[idx]
 
     def __len__(self):
-        return len(self.idx_dict)
+        return len(self._idx_dict)
 
     def __iter__(self):
-        self.iter_index = 0
+        self._iter_index = 0
         return self
 
     def __next__(self):
-        self.iter_index += 1
-        if self.iter_index > len(self):
+        self._iter_index += 1
+        if self._iter_index > len(self):
             raise StopIteration
         else:
-            return self[self.iter_index-1]
+            return self._idx_dict[self._iter_index - 1]
 
     def fix_pointers(self):
         for tree in self:
             tree.fix_pointers()
+
+    #@property #only works in Python 3
+    def next(self):
+        return self.__next__()
 
     @property
     def n_chunks(self):
