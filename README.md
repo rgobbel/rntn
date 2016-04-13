@@ -1,7 +1,7 @@
 This is an implementation of a recursive neural tensor net (RNTN), as described in:
-========================================================
+----------------------------------------------------------------------
 
-* __Recursive Deep Models for Semantic Compositionality Over a Sentiment Treebank__, Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher Manning, Andrew Ng and Christopher Potts Conference on Empirical Methods in Natural Language Processing (EMNLP 2013)
+* __Recursive Deep Models for Semantic Compositionality Over a Sentiment Treebank__, Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher Manning, Andrew Ng and Christopher Potts, Conference on Empirical Methods in Natural Language Processing (EMNLP 2013)
 
 Included:
 --------
