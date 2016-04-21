@@ -262,16 +262,12 @@ def predict_cost(prediction, target):
 
 
 def forward_prop(a, b, V, W, Wb):
-    wvs = W.shape[0]
     W_biased = np.concatenate([W, Wb], axis=1)
     ab = np.concatenate([a, b])
     ab1 = np.concatenate([a, b, v1])
-    h = np.dot(np.dot(ab.T, V).reshape((2*wvs, wvs)).T, ab)
+    h = np.dot(np.dot(ab.T, V), ab)[0]
     std_forward = np.dot(W_biased, ab1)
     return h + std_forward
-
-def forward_logits(Ws, Wsb, a):
-    return softmax(forward_predict(Ws, Wsb, a))
 
 def forward_logits(Ws, Wsb, a):
     Ws_biased = np.concatenate((Ws, Wsb), axis=1)
