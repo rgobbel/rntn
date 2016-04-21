@@ -145,7 +145,7 @@ def reset_params():
     gW = weight_variable([word_vec_size, 2*word_vec_size])
     gWb = bias_variable([word_vec_size, 1])
 
-    gV = weight_variable([2*word_vec_size, 2*word_vec_size, word_vec_size])
+    gV = weight_variable([word_vec_size, 2*word_vec_size, 2*word_vec_size])
 
     gParams = [gV, gW, gWs, gWb, gWsb, gL]
 
@@ -262,17 +262,24 @@ def predict_cost(prediction, target):
 
 
 def forward_prop(a, b, V, W, Wb):
+    wvs = W.shape[0]
     W_biased = np.concatenate([W, Wb], axis=1)
     ab = np.concatenate([a, b])
     ab1 = np.concatenate([a, b, v1])
-    h = np.dot(np.dot(ab.T, V).reshape([2*wvs, wvs]).T, ab)
+    h = np.dot(np.dot(ab.T, V).reshape((2*wvs, wvs)).T, ab)
     std_forward = np.dot(W_biased, ab1)
     return h + std_forward
 
+def forward_logits(Ws, Wsb, a):
+    return softmax(forward_predict(Ws, Wsb, a))
+
+def forward_logits(Ws, Wsb, a):
+    Ws_biased = np.concatenate((Ws, Wsb), axis=1)
+    return np.dot(Ws_biased,
+                  np.concatenate((a, v1)))
 
 def forward_predict(Ws, Wsb, a):
-    Ws_biased = np.concatenate([Ws, Wsb], axis=1)
-    return softmax(np.dot(Ws_biased, np.concatenate([a, v1])))
+  return softmax(forward_logits(Ws, Wsb, a))
 
 
 def forward_prop_sentence(s, V, W, Ws, Wb, Wsb, L):
@@ -384,8 +391,9 @@ def delta_sm_i(prediction, target, Ws, node_out):
 def delta_down_i(W, delta_com, V, inputs):
     grad_inputs = 1.0 - inputs**2
     delta_down_w = np.dot(W.T, delta_com)
-    VVT = V + V.transpose(1, 0, 2)
-    pr1 = delta_com * np.dot(VVT, inputs)
+    VVT = V + np.transpose(V, (0, 2, 1))
+    pr1 = (delta_com.T * np.dot(VVT, inputs).T).T
+#    pr1 = delta_com * np.dot(VVT, inputs)
     S = np.sum(pr1, axis=0)
     return (delta_down_w + S) * grad_inputs
 
@@ -655,7 +663,7 @@ def main(str_args):
         gParams = [gV, gW, gWs, gWb, gWsb, gL]
     else:
         # Tensor layer
-        gV = weight_variable([2*word_vec_size, 2*word_vec_size, word_vec_size])
+        gV = weight_variable([word_vec_size, 2*word_vec_size, 2*word_vec_size])
         # Weights for forward activation
         gW = weight_variable([word_vec_size, 2*word_vec_size])
         # Weights for softmax
@@ -735,7 +743,7 @@ def init_for_debug(data_dir):
     (sentences, dsdict, trains, valids, tests) = load_dataset(data_dir)
     vocab_size = len(dsdict)
     # Tensor layer
-    gV = weight_variable([2*word_vec_size, 2*word_vec_size, word_vec_size])
+    gV = weight_variable([word_vec_size, 2*word_vec_size, 2*word_vec_size])
     # Weights for forward activation
     gW = weight_variable([word_vec_size, 2*word_vec_size])
     # Weights for softmax
