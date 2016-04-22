@@ -49,7 +49,8 @@ import logging as lg
 import random
 import collections
 
-FTYPE = np.float64
+# float64 is good for gradient checks, but slows things down for actual training & evaluation
+FTYPE = np.float32
 
 default_log_name = 'rntn.log'
 default_config_name = 'rntn.ini'
