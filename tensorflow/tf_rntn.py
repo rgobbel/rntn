@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 
+from __future__ import print_function
+
 import numpy as np
 import sys
 import os
 import random
 
+#PY3 = sys.version_info > (3,)
+
 import tensorflow as tf
-from rntn_load_data import *
+from rntn_data import *
 
 # pylint: disable=g-bad-name
+
+HOME = os.environ['HOME']
+LOGDIR = HOME+'/src/rntn/tensorflow/tf_logs'
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('learning_rate', 0.003, 'Initial learning rate.')
-flags.DEFINE_float('lamda', 0.5, 'Regularization parameter.')
+flags.DEFINE_float('lamda', 1.0, 'Regularization parameter.')
 flags.DEFINE_float('u_range', 0.0001, 'Range for uniform random weights.')
-flags.DEFINE_integer('max_steps', 5000, 'Number of steps to run trainer.')
+flags.DEFINE_integer('max_steps', 3000, 'Number of steps to run trainer.')
 flags.DEFINE_float('cost_threshold', 0.5, 'Stop training if cost falls below this level.')
 flags.DEFINE_integer('batch_size', 3, 'Training batch size.')
-flags.DEFINE_integer('wvs', 8, 'Word vector size.')
+flags.DEFINE_integer('wvs', 10, 'Word vector size.')
 flags.DEFINE_integer('n_labels', 5, 'Number of sentiment categories.')
-flags.DEFINE_string('data_dir', '../rntn_data/toydata', 'Training data directory.')
+flags.DEFINE_string('data_dir', HOME+'/src/rntn/toydata', 'Training data directory.')
 flags.DEFINE_integer('max_sentence_length', 150, 'Maximum length sentence we can process.')
 flags.DEFINE_boolean('log_device_placement', False, 'Log device placement')
 
@@ -142,7 +149,8 @@ words = weight_variable([len(dsdict), FLAGS.wvs, 1], name='words')
 
 act_init = tf.constant(0.0, FTYPE, [ACT_LEN, FLAGS.wvs, 1], name='act_init')
 with tf.device('/cpu:0'):
-  activations = tf.Variable(tf.zeros([ACT_LEN, FLAGS.wvs, 1], FTYPE), name='activations')
+  activations = tf.Variable(tf.zeros([ACT_LEN, FLAGS.wvs, 1], FTYPE), name='activations',
+                            trainable=False)
 
 
 def word_vec(i_node):
@@ -254,7 +262,7 @@ def fwd_hidden(a, b):
   #W_biased = tf.concat(1, (W, Wb), name='W_biased')
   #std_forward = tf.matmul(W_biased, ab1, name='std_forward')
   #return tf.add(h, std_forward, name='fwd_hidden')
-  return tf.add(h, std_forward(ab1, W, Wb), name='fwd_hidden')
+  return tf.add(h, std_forward(ab1, W, Wb, name='std_forward'), name='fwd_hidden')
 
 
 def get_node_info(i):
@@ -404,7 +412,7 @@ def batch_labels(indices):
 
   def bl_cond(*parms):
     i, idxs, _ = parms
-    return tf.less(i, tf.size(idxs))
+    return tf.less(i, tf.size(idxs), name='bl_cond')
 
   def bl_body(*parms):
     i, idxs, labs = parms
@@ -430,7 +438,7 @@ def batch_logits(indices, acts):
 
   def logits_continue(*parms):
     cur, idxs, _, _, _ = parms
-    return tf.less(cur, tf.size(idxs), name='batch_done')
+    return tf.less(cur, tf.size(idxs), name='logits_continue')
 
   def logits_batch_body(*parms):
     i, idxs, ptr, css, act = parms
@@ -446,7 +454,7 @@ def batch_logits(indices, acts):
   zero_activations(acts)
   while_parms = [iZ, indices, iZ, init_outs, acts]
   _, _, _, outs, _ = tf.while_loop(logits_continue, logits_batch_body, while_parms,
-                                   parallel_iterations=1, name='batch_logits')
+                                   parallel_iterations=1, name='batch_logits_while')
   lumpy_logits = tf.map_fn(activation_to_logits, outs, name='raw_logits')
   logits = tf.squeeze(lumpy_logits, [2], name='logits')
   return logits
@@ -540,8 +548,7 @@ def debug_init():
   labs = batch_labels(i_ss)
   loss = calc_loss(logits, labs)
   tf.scalar_summary('cost_summary', loss)
-  writer = tf.train.SummaryWriter(
-      '/Users/rgobbel/src/pymisc/rntn_tf/tf_logs', sess.graph)
+  writer = tf.train.SummaryWriter(LOGDIR, sess.graph)
   merged = tf.merge_all_summaries()
   sess.run(tf.initialize_all_variables())
   return logits, labs, loss, merged, writer
@@ -557,7 +564,6 @@ def run_training(cost_threshold=FLAGS.cost_threshold, max_steps=FLAGS.max_steps)
   # if setup_done is False:
   setup_done = True
   opt = tf.train.AdamOptimizer()
-  # try:
   #opt = tf.train.GradientDescentOptimizer(FLAGS.learning_rate)
   i_trains = [s.idx for s in trains]
   i_valids = [s.idx for s in valids]
@@ -567,12 +573,6 @@ def run_training(cost_threshold=FLAGS.cost_threshold, max_steps=FLAGS.max_steps)
   labs = batch_labels(i_ss)
   loss = calc_loss(logits, labs)
   i_ss_accuracy = accuracy(logits, labs)
-  #v_labs = batch_labels(valid_ss)
-  #v_logits = batch_logits(valid_ss, activations.ref())
-  #v_loss = calc_loss(v_logits, v_labs)
-  #train_accuracy = accuracy(logits, labs)
-  #valid_accuracy = accuracy(v_logits, v_labs)
-  # test_accuracy = accuracy(i_tests, activations.ref())
   train_op = opt.minimize(loss)
   #tf.histogram_summary('activations', activations)
   tf.histogram_summary('samples', i_ss)
@@ -582,31 +582,26 @@ def run_training(cost_threshold=FLAGS.cost_threshold, max_steps=FLAGS.max_steps)
   # tf.scalar_summary('test accuracy', test_accuracy)
   merged = tf.merge_all_summaries()
   sess.run(tf.initialize_all_variables())
-  writer = tf.train.SummaryWriter(
-      '/Users/rgobbel/src/pymisc/rntn_tf/tf_logs', sess.graph)
-  # except Exception as exc:
-  #     print('Exception: {0}'.format(exc))
-  # setup_done = False
+  writer = tf.train.SummaryWriter(LOGDIR, sess.graph)
   f_dict[i_ss] = random.sample(i_trains, FLAGS.batch_size)
   _, cost_value = sess.run([train_op, loss], feed_dict=f_dict)
+  #sys.exit(0) # DEBUG
   #f_dict[valid_ss] = i_valids
-  _ = sess.run(zero_activations(activations.ref()), feed_dict=f_dict)
   print('starting')
   accuracy_value = sess.run([i_ss_accuracy], feed_dict=f_dict)
   for step in range(max_steps):
-    #_ = sess.run(zero_activations(activations.ref()), feed_dict=f_dict)
     f_dict[i_ss] = random.sample(i_trains, FLAGS.batch_size)
-    #logits = batch_logits(i_ss, activations.ref())
-    #labs = batch_labels(i_ss)
-    _, _, cost_value, _ = sess.run([tf.pack([i_ss]), train_op, loss], feed_dict=f_dict)
-    #_ = sess.run(zero_activations(activations.ref()), feed_dict=f_dict)
+    _, _, cost_value = sess.run([tf.pack([i_ss]), train_op, loss], feed_dict=f_dict)
     f_dict[i_ss] = i_valids
     _, valid_accuracy_value = sess.run([loss, i_ss_accuracy], feed_dict=f_dict)
     (summ,) = sess.run([merged], feed_dict=f_dict)
-    # summ = sess.run([merged], feed_dict=f_dict)
     writer.add_summary(summ, step)
     writer.flush()
-    print('.', end='', flush=True)
+    if PY3:
+      print('.', end='', flush=True)
+    else:
+      print('.', end='')
+      sys.stdout.flush()
     if cost_value < cost_threshold:
       return step, cost_value, valid_accuracy_value
   return max_steps, cost_value, valid_accuracy_value
